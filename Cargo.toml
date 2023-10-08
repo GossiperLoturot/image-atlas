@@ -1,0 +1,22 @@
+[package]
+name = "image-atlas"
+version = "0.1.0"
+authors = ["GossiperLoturot"]
+edition = "2021"
+description = "A texture atlas generator for generic purpose."
+readme = "README.md"
+repository = "https://github.com/GossiperLoturot/image-atlas"
+license = "MIT"
+keywords = ["image", "texture", "sprite", "atlas", "packer", "packing"]
+categories = ["graphics", "game-development"]
+
+[dependencies.image]
+version = "0.24"
+default-features = false
+
+[dependencies.rectangle-pack]
+version = "0.4"
+default-features = false
+
+[dev-dependencies.image]
+version = "0.24"
