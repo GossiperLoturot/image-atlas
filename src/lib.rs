@@ -379,6 +379,12 @@ impl<P: image::Pixel> Textures<P> {
             .collect::<Vec<_>>();
         Self(textures)
     }
+
+    /// Extracts an inner value as vec.
+    #[inline]
+    pub fn into_vec(self) -> Vec<Texture<P>> {
+        self.0
+    }
 }
 
 impl<P> fmt::Debug for Textures<P>
@@ -407,6 +413,13 @@ impl<P: image::Pixel> ops::DerefMut for Textures<P> {
     }
 }
 
+impl<P: image::Pixel> Into<Vec<Texture<P>>> for Textures<P> {
+    #[inline]
+    fn into(self) -> Vec<Texture<P>> {
+        self.0
+    }
+}
+
 /// A texture
 #[derive(Clone, Default)]
 pub struct Texture<P: image::Pixel>(Vec<image::ImageBuffer<P, Vec<P::Subpixel>>>);
@@ -419,6 +432,12 @@ impl<P: image::Pixel> Texture<P> {
             .map(|mip_level| image::ImageBuffer::new(size >> mip_level, size >> mip_level))
             .collect::<Vec<_>>();
         Self(mip_maps)
+    }
+
+    /// Extracts an inner value as vec.
+    #[inline]
+    pub fn into_vec(self) -> Vec<image::ImageBuffer<P, Vec<P::Subpixel>>> {
+        self.0
     }
 }
 
@@ -445,6 +464,12 @@ impl<P: image::Pixel> ops::DerefMut for Texture<P> {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl<P: image::Pixel> Into<Vec<image::ImageBuffer<P, Vec<P::Subpixel>>>> for Texture<P> {
+    fn into(self) -> Vec<image::ImageBuffer<P, Vec<P::Subpixel>>> {
+        self.0
     }
 }
 
