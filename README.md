@@ -5,7 +5,20 @@
 
 [**Documentation**](https://docs.rs/image-atlas)
 
-This library provides a texture atlas generator for general purpose.
+This library provides a texture atlas generator for general purpose. This library focuses on ease of use and simplicity.
+
+There are multiple generation way
+
+- No gaps between texture elements
+- Simple gap between texture elements
+- Smart gap between texture elements for mip map generation.
+
+and mip map generation option each texture elements
+
+- Single
+- Repeat
+
+This library uses `image` crate for image backend and `rectangle-pack` crate for computing placements of atlas texture elements.
 
 # Examples
 

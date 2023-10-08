@@ -1,23 +1,63 @@
-//! This library provides a texture atlas generation for general purpose.
+//! # image-atlas
+//!
+//! This library provides a texture atlas generator for general purpose. This library focuses on ease of use and simplicity.
+//!
+//! There are multiple generation way
+//!
+//! - No gaps between texture elements
+//! - Simple gap between texture elements
+//! - Smart gap between texture elements for mip map generation.
+//!
+//! and mip map generation option each texture elements
+//!
+//! - Single
+//! - Repeat
+//!
+//! This library uses `image` crate for image backend and `rectangle-pack` crate for computing placements of atlas texture elements.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use std::collections::hash_map::RandomState;
+//! use image_atlas::*;
+//!
+//! let atlas = create_atlas::<_, _, RandomState>(&AtlasDescriptor {
+//!     max_page_count: 8,
+//!     size: 2048,
+//!     mip: AtlasMipOption::Block(32),
+//!     entries: &[AtlasEntry {
+//!         key: "example1",
+//!         texture: image::RgbImage::new(512, 512),
+//!         mip: AtlasEntryMipOption::Single,
+//!     }],
+//! })
+//! .unwrap();
+//!
+//! println!("{:?}", atlas.texcoords.get("example1"));
+//! ```
 
 use std::{
     collections::{BTreeMap, HashMap},
     error, fmt, hash, ops,
 };
 
-/// A way of mip generation.
+/// A mip map generation method for texture atlas
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AtlasMipOption {
-    #[default]
-    None,
     NoneWithPadding(u32),
     Padding(u32),
     Block(u32),
 }
 
-/// A way of texture wrapping.
+impl Default for AtlasMipOption {
+    fn default() -> Self {
+        AtlasMipOption::NoneWithPadding(0)
+    }
+}
+
+/// A mip map generation method each texture elements
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -27,7 +67,7 @@ pub enum AtlasEntryMipOption {
     Repeat,
 }
 
-/// A texture atlas entry, which has key and texture.
+/// A texture element description
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AtlasEntry<K, I: image::GenericImageView> {
@@ -36,7 +76,7 @@ pub struct AtlasEntry<K, I: image::GenericImageView> {
     pub mip: AtlasEntryMipOption,
 }
 
-/// A texture atlas descriptor.
+/// A texture atlas description
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
 pub struct AtlasDescriptor<'a, K, I: image::GenericImageView> {
     pub max_page_count: u32,
@@ -56,9 +96,6 @@ where
     S: Default + hash::BuildHasher,
 {
     match desc.mip {
-        AtlasMipOption::None => {
-            create_atlas_with_padding(desc.max_page_count, desc.size, false, 0, desc.entries)
-        }
         AtlasMipOption::NoneWithPadding(padding) => {
             create_atlas_with_padding(desc.max_page_count, desc.size, false, padding, desc.entries)
         }
@@ -308,7 +345,7 @@ where
     }
 }
 
-/// A texture atlas, which has textures and coordinates.
+/// A texture atlas
 #[derive(Clone, Default)]
 pub struct Atlas<K, P: image::Pixel, S> {
     pub textures: Textures<P>,
@@ -329,12 +366,12 @@ where
     }
 }
 
-/// A texture collection, which has some texture.
+/// A texture collection
 #[derive(Clone, Default)]
 pub struct Textures<P: image::Pixel>(Vec<Texture<P>>);
 
 impl<P: image::Pixel> Textures<P> {
-    /// Creates a new textures with parameters.
+    /// Creates a new texture collection with given parameters.
     #[inline]
     pub fn new_with(page_count: u32, size: u32, mip_level_count: u32) -> Self {
         let textures = (0..page_count)
@@ -370,12 +407,12 @@ impl<P: image::Pixel> ops::DerefMut for Textures<P> {
     }
 }
 
-/// A texture, which has some mip maps.
+/// A texture
 #[derive(Clone, Default)]
 pub struct Texture<P: image::Pixel>(Vec<image::ImageBuffer<P, Vec<P::Subpixel>>>);
 
 impl<P: image::Pixel> Texture<P> {
-    /// Creates a new texture with parameters.
+    /// Creates a new texture with given parameters.
     #[inline]
     pub fn new_with(size: u32, mip_level_count: u32) -> Self {
         let mip_maps = (0..mip_level_count)
@@ -411,7 +448,7 @@ impl<P: image::Pixel> ops::DerefMut for Texture<P> {
     }
 }
 
-/// A texture coordinate.
+/// A texture element coordinate representing `u32` position
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -450,7 +487,7 @@ impl Texcoord {
     }
 }
 
-/// A texture coordinate based on f32.
+/// A texture element coordinate representing normalized `f32` position
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -469,7 +506,7 @@ impl From<Texcoord> for Texcoord32 {
     }
 }
 
-/// A texture coordinate based on f64.
+/// A texture element coordinate representing normalized `f64` position
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -488,7 +525,7 @@ impl From<Texcoord> for Texcoord64 {
     }
 }
 
-/// An error for texture atlas generation.
+/// A texture atlas generation error
 #[derive(Debug)]
 pub enum AtlasError {
     ZeroMaxPageCount,
