@@ -18,28 +18,23 @@
 //! # Examples
 //!
 //! ```rust
-//! use std::collections::hash_map::RandomState;
 //! use image_atlas::*;
 //!
-//! let atlas = create_atlas::<_, _, RandomState>(&AtlasDescriptor {
+//! let atlas = create_atlas(&AtlasDescriptor {
 //!     max_page_count: 8,
 //!     size: 2048,
 //!     mip: AtlasMipOption::Block(32),
 //!     entries: &[AtlasEntry {
-//!         key: "example1",
 //!         texture: image::RgbImage::new(512, 512),
 //!         mip: AtlasEntryMipOption::Single,
 //!     }],
 //! })
 //! .unwrap();
 //!
-//! println!("{:?}", atlas.texcoords.get("example1"));
+//! println!("{:?}", atlas.texcoords[0]);
 //! ```
 
-use std::{
-    collections::{BTreeMap, HashMap},
-    error, fmt, hash, ops,
-};
+use std::{collections::BTreeMap, error, fmt, ops};
 
 /// A mip map generation method for texture atlas
 #[repr(C)]
@@ -70,30 +65,25 @@ pub enum AtlasEntryMipOption {
 /// A texture element description
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct AtlasEntry<K, I: image::GenericImageView> {
-    pub key: K,
+pub struct AtlasEntry<I: image::GenericImageView> {
     pub texture: I,
     pub mip: AtlasEntryMipOption,
 }
 
 /// A texture atlas description
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
-pub struct AtlasDescriptor<'a, K, I: image::GenericImageView> {
+pub struct AtlasDescriptor<'a, I: image::GenericImageView> {
     pub max_page_count: u32,
     pub size: u32,
     pub mip: AtlasMipOption,
-    pub entries: &'a [AtlasEntry<K, I>],
+    pub entries: &'a [AtlasEntry<I>],
 }
 
 /// Creates a new texture atlas.
-pub fn create_atlas<K, I, S>(
-    desc: &AtlasDescriptor<'_, K, I>,
-) -> Result<Atlas<K, I::Pixel, S>, AtlasError>
+pub fn create_atlas<I>(desc: &AtlasDescriptor<'_, I>) -> Result<Atlas<I::Pixel>, AtlasError>
 where
-    K: Clone + Eq + hash::Hash,
     I: image::GenericImage,
     I::Pixel: 'static,
-    S: Default + hash::BuildHasher,
 {
     match desc.mip {
         AtlasMipOption::NoneWithPadding(padding) => {
@@ -108,18 +98,16 @@ where
     }
 }
 
-fn create_atlas_with_padding<K, I, S>(
+fn create_atlas_with_padding<I>(
     max_page_count: u32,
     size: u32,
     mip: bool,
     padding: u32,
-    entries: &[AtlasEntry<K, I>],
-) -> Result<Atlas<K, I::Pixel, S>, AtlasError>
+    entries: &[AtlasEntry<I>],
+) -> Result<Atlas<I::Pixel>, AtlasError>
 where
-    K: Eq + hash::Hash + Clone,
     I: image::GenericImage,
     I::Pixel: 'static,
-    S: hash::BuildHasher + Default,
 {
     if max_page_count == 0 {
         return Err(AtlasError::ZeroMaxPageCount);
@@ -157,10 +145,8 @@ where
     )?;
 
     let mut page_count = 0;
-    let mut texcoords = HashMap::default();
+    let mut texcoords = vec![Texcoord::default(); entries.len()];
     for (&i, (_, location)) in locations.packed_locations() {
-        let entry = &entries[i];
-
         page_count = u32::max(page_count, location.z() + 1);
 
         let texcoord = Texcoord {
@@ -171,7 +157,7 @@ where
             max_y: location.y() + location.height() + padding,
             size,
         };
-        texcoords.insert(entry.key.clone(), texcoord);
+        texcoords[i] = texcoord;
     }
 
     let mip_level_count = if mip { size.ilog2() + 1 } else { 1 };
@@ -192,7 +178,7 @@ where
             let src = &textures[page as usize][0];
 
             let mip_map =
-                image::imageops::resize(src, size, size, image::imageops::FilterType::Triangle);
+                image::imageops::resize(src, size, size, image::imageops::FilterType::CatmullRom);
 
             let target = &mut textures[page as usize][mip_level as usize];
             image::imageops::replace(target, &mip_map, 0, 0);
@@ -205,17 +191,15 @@ where
     })
 }
 
-fn create_atlas_with_block<K, I, S>(
+fn create_atlas_with_block<I>(
     max_page_count: u32,
     size: u32,
     block_size: u32,
-    entries: &[AtlasEntry<K, I>],
-) -> Result<Atlas<K, I::Pixel, S>, AtlasError>
+    entries: &[AtlasEntry<I>],
+) -> Result<Atlas<I::Pixel>, AtlasError>
 where
-    K: Clone + Eq + hash::Hash,
     I: image::GenericImage,
     I::Pixel: 'static,
-    S: Default + hash::BuildHasher,
 {
     if max_page_count == 0 {
         return Err(AtlasError::ZeroMaxPageCount);
@@ -260,10 +244,8 @@ where
     )?;
 
     let mut page_count = 0;
-    let mut texcoords = HashMap::default();
+    let mut texcoords = vec![Texcoord::default(); entries.len()];
     for (&i, (_, location)) in locations.packed_locations() {
-        let entry = &entries[i];
-
         page_count = u32::max(page_count, location.z() + 1);
 
         let texcoord = Texcoord {
@@ -274,7 +256,7 @@ where
             max_y: (location.y() + location.height()) * block_size - padding,
             size,
         };
-        texcoords.insert(entry.key.clone(), texcoord);
+        texcoords[i] = texcoord;
     }
 
     let mip_level_count = block_size.ilog2() + 1;
@@ -287,8 +269,12 @@ where
         for mip_level in 0..mip_level_count {
             let width = src.width() >> mip_level;
             let height = src.height() >> mip_level;
-            let mip_map =
-                image::imageops::resize(&src, width, height, image::imageops::FilterType::Triangle);
+            let mip_map = image::imageops::resize(
+                &src,
+                width,
+                height,
+                image::imageops::FilterType::CatmullRom,
+            );
 
             let target = &mut textures[location.z() as usize][mip_level as usize];
             let x = location.x() as i64 * (block_size >> mip_level) as i64;
@@ -335,14 +321,13 @@ where
 
 /// A texture atlas
 #[derive(Clone, Default)]
-pub struct Atlas<K, P: image::Pixel, S> {
+pub struct Atlas<P: image::Pixel> {
     pub textures: Textures<P>,
-    pub texcoords: HashMap<K, Texcoord, S>,
+    pub texcoords: Vec<Texcoord>,
 }
 
-impl<K, P, S> fmt::Debug for Atlas<K, P, S>
+impl<P> fmt::Debug for Atlas<P>
 where
-    K: fmt::Debug,
     P: image::Pixel + fmt::Debug,
     P::Subpixel: fmt::Debug,
 {
@@ -417,7 +402,10 @@ impl<P: image::Pixel> Texture<P> {
     #[inline]
     pub fn new_with(size: u32, mip_level_count: u32) -> Self {
         let mip_maps = (0..mip_level_count)
-            .map(|mip_level| image::ImageBuffer::new(size >> mip_level, size >> mip_level))
+            .map(|mip_level| {
+                let size = size >> mip_level;
+                image::ImageBuffer::new(size, size)
+            })
             .collect::<Vec<_>>();
         Self(mip_maps)
     }
