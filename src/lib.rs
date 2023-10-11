@@ -156,53 +156,46 @@ where
         &rectangle_pack::contains_smallest_box,
     )?;
 
-    let page_count = locations
-        .packed_locations()
-        .iter()
-        .map(|(_, (_, location))| location.z())
-        .max()
-        .unwrap()
-        + 1;
-
-    let mip_level_count = if mip { size.ilog2() + 1 } else { 1 };
-
-    let mut textures = Textures::new_with(page_count, size, mip_level_count);
+    let mut page_count = 0;
     let mut texcoords = HashMap::default();
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
-        image::imageops::replace(
-            &mut textures[location.z() as usize][0],
-            &entry_with_padding(&entry.texture, padding, entry.mip),
-            location.x() as i64,
-            location.y() as i64,
-        );
+        page_count = u32::max(page_count, location.z() + 1);
 
         let texcoord = Texcoord {
             page: location.z(),
             min_x: location.x() + padding,
             min_y: location.y() + padding,
-            max_x: location.x() + padding + entry.texture.width(),
-            max_y: location.y() + padding + entry.texture.height(),
+            max_x: location.x() + location.width() + padding,
+            max_y: location.y() + location.height() + padding,
             size,
         };
         texcoords.insert(entry.key.clone(), texcoord);
     }
 
-    for page in 0..page_count {
-        for mip_level in 1..mip_level_count {
-            let mip_map = image::imageops::resize(
-                &textures[page as usize][0],
-                size >> mip_level,
-                size >> mip_level,
-                image::imageops::FilterType::Triangle,
-            );
-            image::imageops::replace(
-                &mut textures[page as usize][mip_level as usize],
-                &mip_map,
-                0,
-                0,
-            );
+    let mip_level_count = if mip { size.ilog2() + 1 } else { 1 };
+    let mut textures = Textures::new_with(page_count, size, mip_level_count);
+    for (&i, (_, location)) in locations.packed_locations() {
+        let entry = &entries[i];
+
+        let src = dilate_with_padding(&entry.texture, padding, entry.mip);
+
+        let target = &mut textures[location.z() as usize][0];
+        image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
+    }
+
+    for mip_level in 1..mip_level_count {
+        let size = size >> mip_level;
+
+        for page in 0..page_count {
+            let src = &textures[page as usize][0];
+
+            let mip_map =
+                image::imageops::resize(src, size, size, image::imageops::FilterType::Triangle);
+
+            let target = &mut textures[page as usize][mip_level as usize];
+            image::imageops::replace(target, &mip_map, 0, 0);
         }
     }
 
@@ -240,6 +233,8 @@ where
         return Err(AtlasError::ZeroEntry);
     }
 
+    let padding = block_size >> 1;
+
     let mut rects = rectangle_pack::GroupedRectsToPlace::<_, ()>::new();
     for (i, entry) in entries.iter().enumerate() {
         let rect = rectangle_pack::RectToInsert::new(
@@ -264,49 +259,42 @@ where
         &rectangle_pack::contains_smallest_box,
     )?;
 
-    let page_count = locations
-        .packed_locations()
-        .iter()
-        .map(|(_, (_, location))| location.z())
-        .max()
-        .unwrap()
-        + 1;
-
-    let padding = block_size >> 1;
-    let mip_level_count = block_size.ilog2() + 1;
-
-    let mut textures = Textures::new_with(page_count, size, mip_level_count);
+    let mut page_count = 0;
     let mut texcoords = HashMap::default();
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
-        let texture = entry_with_padding(&entry.texture, padding, entry.mip);
-
-        for mip_level in 0..mip_level_count {
-            let mip_map = image::imageops::resize(
-                &texture,
-                texture.width() >> mip_level,
-                texture.height() >> mip_level,
-                image::imageops::FilterType::Triangle,
-            );
-
-            image::imageops::replace(
-                &mut textures[location.z() as usize][mip_level as usize],
-                &mip_map,
-                (location.x() * block_size >> mip_level) as i64,
-                (location.y() * block_size >> mip_level) as i64,
-            );
-        }
+        page_count = u32::max(page_count, location.z() + 1);
 
         let texcoord = Texcoord {
             page: location.z(),
             min_x: location.x() * block_size + padding,
             min_y: location.y() * block_size + padding,
-            max_x: location.x() * block_size + padding + entry.texture.width(),
-            max_y: location.y() * block_size + padding + entry.texture.height(),
+            max_x: (location.x() + location.width()) * block_size - padding,
+            max_y: (location.y() + location.height()) * block_size - padding,
             size,
         };
         texcoords.insert(entry.key.clone(), texcoord);
+    }
+
+    let mip_level_count = block_size.ilog2() + 1;
+    let mut textures = Textures::new_with(page_count, size, mip_level_count);
+    for (&i, (_, location)) in locations.packed_locations() {
+        let entry = &entries[i];
+
+        let src = dilate_with_padding(&entry.texture, padding, entry.mip);
+
+        for mip_level in 0..mip_level_count {
+            let width = src.width() >> mip_level;
+            let height = src.height() >> mip_level;
+            let mip_map =
+                image::imageops::resize(&src, width, height, image::imageops::FilterType::Triangle);
+
+            let target = &mut textures[location.z() as usize][mip_level as usize];
+            let x = location.x() as i64 * (block_size >> mip_level) as i64;
+            let y = location.y() as i64 * (block_size >> mip_level) as i64;
+            image::imageops::replace(target, &mip_map, x, y);
+        }
     }
 
     Ok(Atlas {
@@ -315,34 +303,34 @@ where
     })
 }
 
-fn entry_with_padding<I>(
+fn dilate_with_padding<I>(
     src: &I,
     padding: u32,
-    leak: AtlasEntryMipOption,
+    mip: AtlasEntryMipOption,
 ) -> image::ImageBuffer<I::Pixel, Vec<<I::Pixel as image::Pixel>::Subpixel>>
 where
     I: image::GenericImage,
 {
-    match leak {
+    let width = src.width() + padding * 2;
+    let height = src.height() + padding * 2;
+    let mut target = image::ImageBuffer::new(width, height);
+    match mip {
         AtlasEntryMipOption::Single => {
-            let mut target =
-                image::ImageBuffer::new(src.width() + padding * 2, src.height() + padding * 2);
-            image::imageops::replace(&mut target, src, padding as i64, padding as i64);
-            target
+            let x = padding as i64;
+            let y = padding as i64;
+            image::imageops::replace(&mut target, src, x, y);
         }
         AtlasEntryMipOption::Repeat => {
-            let mut target =
-                image::ImageBuffer::new(src.width() + padding * 2, src.height() + padding * 2);
             for x in -1..=1 {
                 for y in -1..=1 {
-                    let x = padding as i32 + src.width() as i32 * x;
-                    let y = padding as i32 + src.height() as i32 * y;
-                    image::imageops::replace(&mut target, src, x as i64, y as i64);
+                    let x = padding as i64 + src.width() as i64 * x;
+                    let y = padding as i64 + src.height() as i64 * y;
+                    image::imageops::replace(&mut target, src, x, y);
                 }
             }
-            target
         }
     }
+    target
 }
 
 /// A texture atlas
@@ -413,10 +401,10 @@ impl<P: image::Pixel> ops::DerefMut for Textures<P> {
     }
 }
 
-impl<P: image::Pixel> Into<Vec<Texture<P>>> for Textures<P> {
+impl<P: image::Pixel> From<Textures<P>> for Vec<Texture<P>> {
     #[inline]
-    fn into(self) -> Vec<Texture<P>> {
-        self.0
+    fn from(val: Textures<P>) -> Self {
+        val.0
     }
 }
 
@@ -467,9 +455,9 @@ impl<P: image::Pixel> ops::DerefMut for Texture<P> {
     }
 }
 
-impl<P: image::Pixel> Into<Vec<image::ImageBuffer<P, Vec<P::Subpixel>>>> for Texture<P> {
-    fn into(self) -> Vec<image::ImageBuffer<P, Vec<P::Subpixel>>> {
-        self.0
+impl<P: image::Pixel> From<Texture<P>> for Vec<image::ImageBuffer<P, Vec<P::Subpixel>>> {
+    fn from(val: Texture<P>) -> Self {
+        val.0
     }
 }
 
