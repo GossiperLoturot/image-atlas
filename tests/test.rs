@@ -34,8 +34,8 @@ fn print() {
                 mip: AtlasEntryMipOption::Single,
             },
             AtlasEntry {
-                texture: image::RgbImage::from_fn(512, 256, |_, y| image::Rgb([0, y as u8, 0])),
-                mip: AtlasEntryMipOption::Mirror,
+                texture: image::RgbImage::from_fn(512, 256, |_, _| image::Rgb([0, 255, 0])),
+                mip: AtlasEntryMipOption::Single,
             },
             AtlasEntry {
                 texture: image::RgbImage::from_fn(32, 32, |_, _| image::Rgb([0, 0, 255])),

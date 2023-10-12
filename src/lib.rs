@@ -153,8 +153,8 @@ where
             page: location.z(),
             min_x: location.x() + padding,
             min_y: location.y() + padding,
-            max_x: location.x() + location.width() + padding,
-            max_y: location.y() + location.height() + padding,
+            max_x: location.x() + location.width() - padding,
+            max_y: location.y() + location.height() - padding,
             size,
         };
         texcoords[i] = texcoord;
