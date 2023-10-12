@@ -4,14 +4,15 @@
 //!
 //! There are multiple generation way
 //!
-//! - No gaps between texture elements
-//! - Simple gap between texture elements
-//! - Smart gap between texture elements for mip map generation.
+//! - No padding between texture elements
+//! - With padding between texture elements
+//! - With smart padding between texture elements for mip map generation.
 //!
 //! and mip map generation option each texture elements
 //!
-//! - Single
+//! - Clamp
 //! - Repeat
+//! - Mirror
 //!
 //! This library uses `image` crate for image backend and `rectangle-pack` crate for computing placements of atlas texture elements.
 //!

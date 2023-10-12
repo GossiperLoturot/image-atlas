@@ -1,6 +1,6 @@
 [package]
 name = "image-atlas"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["GossiperLoturot"]
 edition = "2021"
 description = "A texture atlas generator for generic purpose."

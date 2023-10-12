@@ -9,36 +9,35 @@ This library provides a texture atlas generator for general purpose. This librar
 
 There are multiple generation way
 
-- No gaps between texture elements
-- Simple gap between texture elements
-- Smart gap between texture elements for mip map generation.
+- No padding between texture elements
+- With padding between texture elements
+- With smart padding between texture elements for mip map generation.
 
 and mip map generation option each texture elements
 
-- Single
+- Clamp
 - Repeat
+- Mirror
 
 This library uses `image` crate for image backend and `rectangle-pack` crate for computing placements of atlas texture elements.
 
 # Examples
 
 ```rust
-use std::collections::hash_map::RandomState;
 use image_atlas::*;
 
-let atlas = create_atlas::<_, _, RandomState>(&AtlasDescriptor {
+let atlas = create_atlas(&AtlasDescriptor {
     max_page_count: 8,
     size: 2048,
-    mip: AtlasMipOption::Block(32),
+    mip: AtlasMipOption::MipWithBlock(AtlasMipFilter::Lanczos3, 32),
     entries: &[AtlasEntry {
-        key: "example1",
         texture: image::RgbImage::new(512, 512),
-        mip: AtlasEntryMipOption::Single,
+        mip: AtlasEntryMipOption::Clamp,
     }],
 })
 .unwrap();
 
-println!("{:?}", atlas.texcoords.get("example1"));
+println!("{:?}", atlas.texcoords[0]);
 ```
 
 # Installation
