@@ -10,7 +10,7 @@ fn usage() {
         mip: AtlasMipOption::MipWithBlock(AtlasMipFilter::Lanczos3, 32),
         entries: &[AtlasEntry {
             texture: image::RgbImage::new(512, 512),
-            mip: AtlasEntryMipOption::Single,
+            mip: AtlasEntryMipOption::Clamp,
         }],
     })
     .unwrap();
@@ -43,7 +43,7 @@ fn print() {
             },
             AtlasEntry {
                 texture: image::RgbImage::from_fn(8, 8, |_, _| image::Rgb([0, 255, 255])),
-                mip: AtlasEntryMipOption::Single,
+                mip: AtlasEntryMipOption::Clamp,
             },
             AtlasEntry {
                 texture: image::RgbImage::from_fn(8, 8, |_, _| image::Rgb([255, 0, 255])),

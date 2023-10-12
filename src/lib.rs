@@ -26,7 +26,7 @@
 //!     mip: AtlasMipOption::MipWithBlock(AtlasMipFilter::Lanczos3, 32),
 //!     entries: &[AtlasEntry {
 //!         texture: image::RgbImage::new(512, 512),
-//!         mip: AtlasEntryMipOption::Single,
+//!         mip: AtlasEntryMipOption::Clamp,
 //!     }],
 //! })
 //! .unwrap();
@@ -81,7 +81,7 @@ pub enum AtlasMipOption {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AtlasEntryMipOption {
     #[default]
-    Single,
+    Clamp,
     Repeat,
     Mirror,
 }
@@ -129,6 +129,7 @@ where
     }
 }
 
+#[inline]
 fn create_atlas_with_padding<I>(
     max_page_count: u32,
     size: u32,
@@ -190,7 +191,14 @@ where
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
-        let src = dilate_with_padding(&entry.texture, padding, entry.mip);
+        let src = resample(
+            &entry.texture,
+            entry.mip,
+            padding,
+            padding,
+            location.width(),
+            location.height(),
+        );
 
         let target = &mut textures[location.z() as usize][0];
         image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
@@ -202,6 +210,7 @@ where
     })
 }
 
+#[inline]
 fn create_atlas_mip_with_padding<I>(
     max_page_count: u32,
     size: u32,
@@ -269,7 +278,14 @@ where
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
-        let src = dilate_with_padding(&entry.texture, padding, entry.mip);
+        let src = resample(
+            &entry.texture,
+            entry.mip,
+            padding,
+            padding,
+            location.width(),
+            location.height(),
+        );
 
         let target = &mut textures[location.z() as usize][0];
         image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
@@ -294,6 +310,7 @@ where
     })
 }
 
+#[inline]
 fn create_atlas_mip_with_block<I>(
     max_page_count: u32,
     size: u32,
@@ -368,7 +385,14 @@ where
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
-        let src = dilate_with_padding(&entry.texture, padding, entry.mip);
+        let src = resample(
+            &entry.texture,
+            entry.mip,
+            padding,
+            padding,
+            location.width() * block_size,
+            location.height() * block_size,
+        );
 
         for mip_level in 0..mip_level_count {
             let width = src.width() >> mip_level;
@@ -388,58 +412,49 @@ where
     })
 }
 
-fn dilate_with_padding<I>(
+#[inline]
+#[rustfmt::skip]
+fn resample<I>(
     src: &I,
-    padding: u32,
     mip: AtlasEntryMipOption,
+    shift_x: u32,
+    shift_y: u32,
+    width: u32,
+    height: u32,
 ) -> image::ImageBuffer<I::Pixel, Vec<<I::Pixel as image::Pixel>::Subpixel>>
 where
     I: image::GenericImage,
-    I::Pixel: 'static,
 {
-    let width = src.width() + padding * 2;
-    let height = src.height() + padding * 2;
     let mut target = image::ImageBuffer::new(width, height);
     match mip {
-        AtlasEntryMipOption::Single => {
-            let x = padding as i64;
-            let y = padding as i64;
-
-            image::imageops::replace(&mut target, src, x, y);
+        AtlasEntryMipOption::Clamp => {
+            for x in 0..width {
+                for y in 0..height {
+                    let sx = (x as i32 - shift_x as i32).max(0).min(src.width() as i32 - 1);
+                    let sy = (y as i32 - shift_y as i32).max(0).min(src.height() as i32 - 1);
+                    *target.get_pixel_mut(x, y) = src.get_pixel(sx as u32, sy as u32);
+                }
+            }
         }
         AtlasEntryMipOption::Repeat => {
-            let repeat_x = (padding as f32 / src.width() as f32).ceil() as i64;
-            let repeat_y = (padding as f32 / src.height() as f32).ceil() as i64;
-
-            for i in -repeat_x..=repeat_x {
-                for j in -repeat_y..=repeat_y {
-                    let x = padding as i64 + src.width() as i64 * i;
-                    let y = padding as i64 + src.height() as i64 * j;
-
-                    image::imageops::replace(&mut target, src, x, y);
+            for x in 0..width {
+                for y in 0..height {
+                    let sx = (x as i32 - shift_x as i32).rem_euclid(src.width() as i32);
+                    let sy = (y as i32 - shift_y as i32).rem_euclid(src.height() as i32);
+                    *target.get_pixel_mut(x, y) = src.get_pixel(sx as u32, sy as u32);
                 }
             }
         }
         AtlasEntryMipOption::Mirror => {
-            let src_inv_x = image::imageops::flip_horizontal(src);
-            let src_inv_y = image::imageops::flip_vertical(src);
-            let src_inv_xy = image::imageops::flip_vertical(&src_inv_x);
-
-            let repeat_x = (padding as f32 / src.width() as f32).ceil() as i64;
-            let repeat_y = (padding as f32 / src.height() as f32).ceil() as i64;
-
-            for i in -repeat_x..=repeat_x {
-                for j in -repeat_y..=repeat_y {
-                    let x = padding as i64 + src.width() as i64 * i;
-                    let y = padding as i64 + src.height() as i64 * j;
-
-                    match (i & 1, j & 1) {
-                        (0, 0) => image::imageops::replace(&mut target, src, x, y),
-                        (1, 0) => image::imageops::replace(&mut target, &src_inv_x, x, y),
-                        (0, 1) => image::imageops::replace(&mut target, &src_inv_y, x, y),
-                        (1, 1) => image::imageops::replace(&mut target, &src_inv_xy, x, y),
-                        _ => unreachable!(),
-                    }
+            for x in 0..width {
+                for y in 0..height {
+                    let xx = (x as i32 - shift_x as i32).div_euclid(src.width() as i32);
+                    let yy = (y as i32 - shift_y as i32).div_euclid(src.height() as i32);
+                    let mut sx = (x as i32 - shift_x as i32).rem_euclid(src.width() as i32);
+                    let mut sy = (y as i32 - shift_y as i32).rem_euclid(src.height() as i32);
+                    if xx & 1 == 0 { sx = src.width() as i32 - 1 - sx; }
+                    if yy & 1 == 0 { sy = src.height() as i32 - 1 - sy; }
+                    *target.get_pixel_mut(x, y) = src.get_pixel(sx as u32, sy as u32);
                 }
             }
         }
