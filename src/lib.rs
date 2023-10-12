@@ -23,7 +23,7 @@
 //! let atlas = create_atlas(&AtlasDescriptor {
 //!     max_page_count: 8,
 //!     size: 2048,
-//!     mip: AtlasMipOption::Block(32),
+//!     mip: AtlasMipOption::MipWithBlock(AtlasMipFilter::Lanczos3, 32),
 //!     entries: &[AtlasEntry {
 //!         texture: image::RgbImage::new(512, 512),
 //!         mip: AtlasEntryMipOption::Single,
@@ -36,20 +36,43 @@
 
 use std::{collections::BTreeMap, error, fmt, ops};
 
-/// A mip map generation method for texture atlas
+/// A mip map filter for texture atlas
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum AtlasMipOption {
-    NoneWithPadding(u32),
-    Padding(u32),
-    Block(u32),
+pub enum AtlasMipFilter {
+    #[default]
+    Nearest,
+    Linear,
+    Cubic,
+    Gaussian,
+    Lanczos3,
 }
 
-impl Default for AtlasMipOption {
-    fn default() -> Self {
-        AtlasMipOption::NoneWithPadding(0)
+impl From<AtlasMipFilter> for image::imageops::FilterType {
+    #[inline]
+    fn from(value: AtlasMipFilter) -> Self {
+        match value {
+            AtlasMipFilter::Nearest => Self::Nearest,
+            AtlasMipFilter::Linear => Self::Triangle,
+            AtlasMipFilter::Cubic => Self::CatmullRom,
+            AtlasMipFilter::Gaussian => Self::Gaussian,
+            AtlasMipFilter::Lanczos3 => Self::Lanczos3,
+        }
     }
+}
+
+/// A mip map generation method for texture atlas
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum AtlasMipOption {
+    #[default]
+    NoMip,
+    NoMipWithPadding(u32),
+    Mip(AtlasMipFilter),
+    MipWithPadding(AtlasMipFilter, u32),
+    MipWithBlock(AtlasMipFilter, u32),
 }
 
 /// A mip map generation method each texture elements
@@ -60,6 +83,7 @@ pub enum AtlasEntryMipOption {
     #[default]
     Single,
     Repeat,
+    Mirror,
 }
 
 /// A texture element description
@@ -80,20 +104,27 @@ pub struct AtlasDescriptor<'a, I: image::GenericImageView> {
 }
 
 /// Creates a new texture atlas.
+#[rustfmt::skip]
 pub fn create_atlas<I>(desc: &AtlasDescriptor<'_, I>) -> Result<Atlas<I::Pixel>, AtlasError>
 where
     I: image::GenericImage,
     I::Pixel: 'static,
 {
     match desc.mip {
-        AtlasMipOption::NoneWithPadding(padding) => {
-            create_atlas_with_padding(desc.max_page_count, desc.size, false, padding, desc.entries)
+        AtlasMipOption::NoMip => {
+            create_atlas_with_padding(desc.max_page_count, desc.size, 0, desc.entries)
         }
-        AtlasMipOption::Padding(padding) => {
-            create_atlas_with_padding(desc.max_page_count, desc.size, true, padding, desc.entries)
+        AtlasMipOption::NoMipWithPadding(padding) => {
+            create_atlas_with_padding(desc.max_page_count, desc.size, padding, desc.entries)
         }
-        AtlasMipOption::Block(block_size) => {
-            create_atlas_with_block(desc.max_page_count, desc.size, block_size, desc.entries)
+        AtlasMipOption::Mip(filter) => {
+            create_atlas_mip_with_padding(desc.max_page_count, desc.size, filter, 0, desc.entries)
+        }
+        AtlasMipOption::MipWithPadding(filter, padding) => {
+            create_atlas_mip_with_padding(desc.max_page_count, desc.size, filter, padding, desc.entries)
+        }
+        AtlasMipOption::MipWithBlock(filter, block_size) => {
+            create_atlas_mip_with_block(desc.max_page_count, desc.size, filter, block_size, desc.entries)
         }
     }
 }
@@ -101,7 +132,80 @@ where
 fn create_atlas_with_padding<I>(
     max_page_count: u32,
     size: u32,
-    mip: bool,
+    padding: u32,
+    entries: &[AtlasEntry<I>],
+) -> Result<Atlas<I::Pixel>, AtlasError>
+where
+    I: image::GenericImage,
+    I::Pixel: 'static,
+{
+    if max_page_count == 0 {
+        return Err(AtlasError::ZeroMaxPageCount);
+    }
+
+    if entries.is_empty() {
+        return Err(AtlasError::ZeroEntry);
+    }
+
+    let mut rects = rectangle_pack::GroupedRectsToPlace::<_, ()>::new();
+    for (i, entry) in entries.iter().enumerate() {
+        let rect = rectangle_pack::RectToInsert::new(
+            entry.texture.width() + padding * 2,
+            entry.texture.height() + padding * 2,
+            1,
+        );
+        rects.push_rect(i, None, rect);
+    }
+
+    let mut target_bins = BTreeMap::new();
+    target_bins.insert(
+        (),
+        rectangle_pack::TargetBin::new(size, size, max_page_count),
+    );
+
+    let locations = rectangle_pack::pack_rects(
+        &rects,
+        &mut target_bins,
+        &rectangle_pack::volume_heuristic,
+        &rectangle_pack::contains_smallest_box,
+    )?;
+
+    let mut page_count = 0;
+    let mut texcoords = vec![Texcoord::default(); entries.len()];
+    for (&i, (_, location)) in locations.packed_locations() {
+        page_count = u32::max(page_count, location.z() + 1);
+
+        let texcoord = Texcoord {
+            page: location.z(),
+            min_x: location.x() + padding,
+            min_y: location.y() + padding,
+            max_x: location.x() + location.width() - padding,
+            max_y: location.y() + location.height() - padding,
+            size,
+        };
+        texcoords[i] = texcoord;
+    }
+
+    let mut textures = Textures::new_with(page_count, size, 1);
+    for (&i, (_, location)) in locations.packed_locations() {
+        let entry = &entries[i];
+
+        let src = dilate_with_padding(&entry.texture, padding, entry.mip);
+
+        let target = &mut textures[location.z() as usize][0];
+        image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
+    }
+
+    Ok(Atlas {
+        textures,
+        texcoords,
+    })
+}
+
+fn create_atlas_mip_with_padding<I>(
+    max_page_count: u32,
+    size: u32,
+    filter: AtlasMipFilter,
     padding: u32,
     entries: &[AtlasEntry<I>],
 ) -> Result<Atlas<I::Pixel>, AtlasError>
@@ -160,7 +264,7 @@ where
         texcoords[i] = texcoord;
     }
 
-    let mip_level_count = if mip { size.ilog2() + 1 } else { 1 };
+    let mip_level_count = size.ilog2() + 1;
     let mut textures = Textures::new_with(page_count, size, mip_level_count);
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
@@ -177,8 +281,7 @@ where
         for page in 0..page_count {
             let src = &textures[page as usize][0];
 
-            let mip_map =
-                image::imageops::resize(src, size, size, image::imageops::FilterType::CatmullRom);
+            let mip_map = image::imageops::resize(src, size, size, filter.into());
 
             let target = &mut textures[page as usize][mip_level as usize];
             image::imageops::replace(target, &mip_map, 0, 0);
@@ -191,9 +294,10 @@ where
     })
 }
 
-fn create_atlas_with_block<I>(
+fn create_atlas_mip_with_block<I>(
     max_page_count: u32,
     size: u32,
+    filter: AtlasMipFilter,
     block_size: u32,
     entries: &[AtlasEntry<I>],
 ) -> Result<Atlas<I::Pixel>, AtlasError>
@@ -269,12 +373,7 @@ where
         for mip_level in 0..mip_level_count {
             let width = src.width() >> mip_level;
             let height = src.height() >> mip_level;
-            let mip_map = image::imageops::resize(
-                &src,
-                width,
-                height,
-                image::imageops::FilterType::CatmullRom,
-            );
+            let mip_map = image::imageops::resize(&src, width, height, filter.into());
 
             let target = &mut textures[location.z() as usize][mip_level as usize];
             let x = location.x() as i64 * (block_size >> mip_level) as i64;
@@ -296,6 +395,7 @@ fn dilate_with_padding<I>(
 ) -> image::ImageBuffer<I::Pixel, Vec<<I::Pixel as image::Pixel>::Subpixel>>
 where
     I: image::GenericImage,
+    I::Pixel: 'static,
 {
     let width = src.width() + padding * 2;
     let height = src.height() + padding * 2;
@@ -304,14 +404,42 @@ where
         AtlasEntryMipOption::Single => {
             let x = padding as i64;
             let y = padding as i64;
+
             image::imageops::replace(&mut target, src, x, y);
         }
         AtlasEntryMipOption::Repeat => {
-            for x in -1..=1 {
-                for y in -1..=1 {
-                    let x = padding as i64 + src.width() as i64 * x;
-                    let y = padding as i64 + src.height() as i64 * y;
+            let repeat_x = (padding as f32 / src.width() as f32).ceil() as i64;
+            let repeat_y = (padding as f32 / src.height() as f32).ceil() as i64;
+
+            for i in -repeat_x..=repeat_x {
+                for j in -repeat_y..=repeat_y {
+                    let x = padding as i64 + src.width() as i64 * i;
+                    let y = padding as i64 + src.height() as i64 * j;
+
                     image::imageops::replace(&mut target, src, x, y);
+                }
+            }
+        }
+        AtlasEntryMipOption::Mirror => {
+            let src_inv_x = image::imageops::flip_horizontal(src);
+            let src_inv_y = image::imageops::flip_vertical(src);
+            let src_inv_xy = image::imageops::flip_vertical(&src_inv_x);
+
+            let repeat_x = (padding as f32 / src.width() as f32).ceil() as i64;
+            let repeat_y = (padding as f32 / src.height() as f32).ceil() as i64;
+
+            for i in -repeat_x..=repeat_x {
+                for j in -repeat_y..=repeat_y {
+                    let x = padding as i64 + src.width() as i64 * i;
+                    let y = padding as i64 + src.height() as i64 * j;
+
+                    match (i & 1, j & 1) {
+                        (0, 0) => image::imageops::replace(&mut target, src, x, y),
+                        (1, 0) => image::imageops::replace(&mut target, &src_inv_x, x, y),
+                        (0, 1) => image::imageops::replace(&mut target, &src_inv_y, x, y),
+                        (1, 1) => image::imageops::replace(&mut target, &src_inv_xy, x, y),
+                        _ => unreachable!(),
+                    }
                 }
             }
         }

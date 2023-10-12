@@ -7,7 +7,7 @@ fn usage() {
     let atlas = create_atlas(&AtlasDescriptor {
         max_page_count: 8,
         size: 2048,
-        mip: AtlasMipOption::Block(32),
+        mip: AtlasMipOption::MipWithBlock(AtlasMipFilter::Lanczos3, 32),
         entries: &[AtlasEntry {
             texture: image::RgbImage::new(512, 512),
             mip: AtlasEntryMipOption::Single,
@@ -27,35 +27,31 @@ fn print() {
     let atlas = create_atlas(&AtlasDescriptor {
         max_page_count: 8,
         size: 2048,
-        mip: AtlasMipOption::Block(32),
+        mip: AtlasMipOption::MipWithBlock(AtlasMipFilter::Lanczos3, 32),
         entries: &[
             AtlasEntry {
                 texture: image::RgbImage::from_fn(512, 512, |_, _| image::Rgb([255, 0, 0])),
-                mip: AtlasEntryMipOption::Single,
+                mip: AtlasEntryMipOption::Repeat,
             },
             AtlasEntry {
                 texture: image::RgbImage::from_fn(512, 256, |_, _| image::Rgb([0, 255, 0])),
-                mip: AtlasEntryMipOption::Single,
+                mip: AtlasEntryMipOption::Repeat,
             },
             AtlasEntry {
                 texture: image::RgbImage::from_fn(32, 32, |_, _| image::Rgb([0, 0, 255])),
-                mip: AtlasEntryMipOption::Single,
-            },
-            AtlasEntry {
-                texture: image::RgbImage::from_fn(256, 256, |_, _| image::Rgb([0, 255, 255])),
-                mip: AtlasEntryMipOption::Single,
-            },
-            AtlasEntry {
-                texture: image::RgbImage::from_fn(4, 4, |_, _| image::Rgb([255, 0, 255])),
-                mip: AtlasEntryMipOption::Single,
-            },
-            AtlasEntry {
-                texture: image::RgbImage::from_fn(3, 5, |_, _| image::Rgb([255, 255, 0])),
-                mip: AtlasEntryMipOption::Single,
-            },
-            AtlasEntry {
-                texture: image::RgbImage::from_fn(3, 5, |_, _| image::Rgb([255, 255, 255])),
                 mip: AtlasEntryMipOption::Repeat,
+            },
+            AtlasEntry {
+                texture: image::RgbImage::from_fn(8, 8, |_, _| image::Rgb([0, 255, 255])),
+                mip: AtlasEntryMipOption::Single,
+            },
+            AtlasEntry {
+                texture: image::RgbImage::from_fn(8, 8, |_, _| image::Rgb([255, 0, 255])),
+                mip: AtlasEntryMipOption::Repeat,
+            },
+            AtlasEntry {
+                texture: image::RgbImage::from_fn(8, 8, |_, _| image::Rgb([255, 255, 0])),
+                mip: AtlasEntryMipOption::Mirror,
             },
         ],
     })
