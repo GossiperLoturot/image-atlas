@@ -35,7 +35,7 @@
 //! println!("{:?}", atlas.texcoords[0]);
 //! ```
 
-use std::{collections::BTreeMap, error, fmt, ops};
+use std::{collections::BTreeMap, error, fmt};
 
 /// A mip map filter for texture atlas
 #[repr(C)]
@@ -188,7 +188,8 @@ where
         texcoords[i] = texcoord;
     }
 
-    let mut textures = Textures::new_with(page_count, size, 1);
+    let mip_level_count = 1;
+    let mut textures = vec![Texture::new(size, mip_level_count); page_count as usize];
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
@@ -201,11 +202,14 @@ where
             location.height(),
         );
 
-        let target = &mut textures[location.z() as usize][0];
+        let target = &mut textures[location.z() as usize].mip_maps[0];
         image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
     }
 
     Ok(Atlas {
+        page_count,
+        size,
+        mip_level_count,
         textures,
         texcoords,
     })
@@ -275,7 +279,7 @@ where
     }
 
     let mip_level_count = size.ilog2() + 1;
-    let mut textures = Textures::new_with(page_count, size, mip_level_count);
+    let mut textures = vec![Texture::new(size, mip_level_count); page_count as usize];
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
@@ -288,7 +292,7 @@ where
             location.height(),
         );
 
-        let target = &mut textures[location.z() as usize][0];
+        let target = &mut textures[location.z() as usize].mip_maps[0];
         image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
     }
 
@@ -296,16 +300,19 @@ where
         let size = size >> mip_level;
 
         for page in 0..page_count {
-            let src = &textures[page as usize][0];
+            let src = &textures[page as usize].mip_maps[0];
 
             let mip_map = image::imageops::resize(src, size, size, filter.into());
 
-            let target = &mut textures[page as usize][mip_level as usize];
+            let target = &mut textures[page as usize].mip_maps[mip_level as usize];
             image::imageops::replace(target, &mip_map, 0, 0);
         }
     }
 
     Ok(Atlas {
+        page_count,
+        size,
+        mip_level_count,
         textures,
         texcoords,
     })
@@ -382,7 +389,7 @@ where
     }
 
     let mip_level_count = block_size.ilog2() + 1;
-    let mut textures = Textures::new_with(page_count, size, mip_level_count);
+    let mut textures = vec![Texture::new(size, mip_level_count); page_count as usize];
     for (&i, (_, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
@@ -400,7 +407,7 @@ where
             let height = src.height() >> mip_level;
             let mip_map = image::imageops::resize(&src, width, height, filter.into());
 
-            let target = &mut textures[location.z() as usize][mip_level as usize];
+            let target = &mut textures[location.z() as usize].mip_maps[mip_level as usize];
             let x = location.x() as i64 * (block_size >> mip_level) as i64;
             let y = location.y() as i64 * (block_size >> mip_level) as i64;
             image::imageops::replace(target, &mip_map, x, y);
@@ -408,6 +415,9 @@ where
     }
 
     Ok(Atlas {
+        page_count,
+        size,
+        mip_level_count,
         textures,
         texcoords,
     })
@@ -466,7 +476,10 @@ where
 /// A texture atlas
 #[derive(Clone, Default)]
 pub struct Atlas<P: image::Pixel> {
-    pub textures: Textures<P>,
+    pub page_count: u32,
+    pub size: u32,
+    pub mip_level_count: u32,
+    pub textures: Vec<Texture<P>>,
     pub texcoords: Vec<Texcoord>,
 }
 
@@ -477,87 +490,36 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Atlas")
+            .field("page_count", &self.page_count)
+            .field("size", &self.size)
+            .field("mip_level_count", &self.mip_level_count)
             .field("textures", &self.textures)
             .field("texcoords", &self.texcoords)
             .finish()
     }
 }
 
-/// A texture collection
-#[derive(Clone, Default)]
-pub struct Textures<P: image::Pixel>(Vec<Texture<P>>);
-
-impl<P: image::Pixel> Textures<P> {
-    /// Creates a new texture collection with given parameters.
-    #[inline]
-    pub fn new_with(page_count: u32, size: u32, mip_level_count: u32) -> Self {
-        let textures = (0..page_count)
-            .map(|_| Texture::new_with(size, mip_level_count))
-            .collect::<Vec<_>>();
-        Self(textures)
-    }
-
-    /// Extracts an inner value as vec.
-    #[inline]
-    pub fn into_vec(self) -> Vec<Texture<P>> {
-        self.0
-    }
-}
-
-impl<P> fmt::Debug for Textures<P>
-where
-    P: image::Pixel + fmt::Debug,
-    P::Subpixel: fmt::Debug,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
-}
-
-impl<P: image::Pixel> ops::Deref for Textures<P> {
-    type Target = Vec<Texture<P>>;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<P: image::Pixel> ops::DerefMut for Textures<P> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<P: image::Pixel> From<Textures<P>> for Vec<Texture<P>> {
-    #[inline]
-    fn from(val: Textures<P>) -> Self {
-        val.0
-    }
-}
-
 /// A texture
 #[derive(Clone, Default)]
-pub struct Texture<P: image::Pixel>(Vec<image::ImageBuffer<P, Vec<P::Subpixel>>>);
+pub struct Texture<P: image::Pixel> {
+    pub size: u32,
+    pub mip_level_count: u32,
+    pub mip_maps: Vec<image::ImageBuffer<P, Vec<P::Subpixel>>>,
+}
 
 impl<P: image::Pixel> Texture<P> {
     /// Creates a new texture with given parameters.
     #[inline]
-    pub fn new_with(size: u32, mip_level_count: u32) -> Self {
+    pub fn new(size: u32, mip_level_count: u32) -> Self {
         let mip_maps = (0..mip_level_count)
-            .map(|mip_level| {
-                let size = size >> mip_level;
-                image::ImageBuffer::new(size, size)
-            })
+            .map(|mip_level| size >> mip_level)
+            .map(|size| image::ImageBuffer::new(size, size))
             .collect::<Vec<_>>();
-        Self(mip_maps)
-    }
-
-    /// Extracts an inner value as vec.
-    #[inline]
-    pub fn into_vec(self) -> Vec<image::ImageBuffer<P, Vec<P::Subpixel>>> {
-        self.0
+        Self {
+            size,
+            mip_level_count,
+            mip_maps,
+        }
     }
 }
 
@@ -568,28 +530,11 @@ where
 {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
-    }
-}
-
-impl<P: image::Pixel> ops::Deref for Texture<P> {
-    type Target = Vec<image::ImageBuffer<P, Vec<P::Subpixel>>>;
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<P: image::Pixel> ops::DerefMut for Texture<P> {
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<P: image::Pixel> From<Texture<P>> for Vec<image::ImageBuffer<P, Vec<P::Subpixel>>> {
-    fn from(val: Texture<P>) -> Self {
-        val.0
+        f.debug_struct("Texture")
+            .field("size", &self.size)
+            .field("mip_level_count", &self.mip_level_count)
+            .field("mip_maps", &self.mip_maps)
+            .finish()
     }
 }
 

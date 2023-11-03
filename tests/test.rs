@@ -18,8 +18,10 @@ fn usage() {
     println!("{:?}", atlas.texcoords[0]);
 
     assert_eq!(atlas.texcoords.len(), 1);
-    assert!(atlas.textures.len() <= 8);
-    assert_eq!(atlas.textures[0].len(), 6);
+
+    assert!(atlas.page_count <= 8);
+    assert_eq!(atlas.size, 2048);
+    assert_eq!(atlas.mip_level_count, 6);
 }
 
 #[test]
@@ -64,12 +66,11 @@ fn print() {
 
     atlas
         .textures
-        .into_vec()
         .into_iter()
         .enumerate()
         .for_each(|(i, texture)| {
             texture
-                .into_vec()
+                .mip_maps
                 .into_iter()
                 .enumerate()
                 .for_each(|(j, mip_map)| {
