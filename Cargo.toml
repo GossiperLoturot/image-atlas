@@ -1,6 +1,6 @@
 [package]
 name = "image-atlas"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["GossiperLoturot"]
 edition = "2021"
 description = "A texture atlas generator for generic purpose."
@@ -11,7 +11,7 @@ keywords = ["image", "texture", "sprite", "atlas", "packer"]
 categories = ["graphics", "game-development"]
 
 [dependencies.image]
-version = "0.24"
+version = "0.25"
 default-features = false
 
 [dependencies.rectangle-pack]
@@ -24,4 +24,4 @@ optional = true
 default-features = false
 
 [dev-dependencies.image]
-version = "0.24"
+version = "0.25"
