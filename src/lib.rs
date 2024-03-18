@@ -1,20 +1,14 @@
 //! # image-atlas
 //!
-//! This library provides a texture atlas generator for general purpose. This library focuses on ease of use and simplicity.
+//! This library provides a general-purpose atlas texture generator with a focus on ease of use and simplicity.
 //!
-//! There are multiple generation way
-//!
-//! - No padding between texture elements
-//! - With padding between texture elements
-//! - With smart padding between texture elements for mip map generation.
-//!
-//! and mip map generation option each texture elements
-//!
-//! - Clamp
-//! - Repeat
-//! - Mirror
-//!
-//! This library uses `image` crate for image backend and `rectangle-pack` crate for computing placements of atlas texture elements.
+//! There are multiple generation methods and mip map options.
+//! 
+//! - No padding between elements
+//! - With padding between elements
+//! - With smart padding between elements for mip map generation.
+//! 
+//! This library uses `image` crate for image processing and `rectangle-pack` crate for computing element layout.
 //!
 //! # Examples
 //!

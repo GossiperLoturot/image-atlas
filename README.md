@@ -1,25 +1,19 @@
 # image-atlas
 
-![Crates.io](https://img.shields.io/crates/v/image-atlas)
-![Crates.io](https://img.shields.io/crates/l/image-atlas)
+[![crates.io](https://img.shields.io/crates/v/image-atlas)](https://crates.io/crates/image-atlas)
+[![doc.rs](https://img.shields.io/docsrs/image-atlas)](https://docs.rs/image-atlas)
 
 [**Documentation**](https://docs.rs/image-atlas)
 
-This library provides a texture atlas generator for general purpose. This library focuses on ease of use and simplicity.
+This library provides a general-purpose atlas texture generator with a focus on ease of use and simplicity.
 
-There are multiple generation way
+There are multiple generation methods and mip map options.
 
-- No padding between texture elements
-- With padding between texture elements
-- With smart padding between texture elements for mip map generation.
+- No padding between elements
+- With padding between elements
+- With smart padding between elements for mip map generation.
 
-and mip map generation option each texture elements
-
-- Clamp
-- Repeat
-- Mirror
-
-This library uses `image` crate for image backend and `rectangle-pack` crate for computing placements of atlas texture elements.
+This library uses `image` crate for image processing and `rectangle-pack` crate for computing element layout.
 
 # Examples
 
@@ -45,7 +39,3 @@ println!("{:?}", atlas.texcoords[0]);
 ```shell
 cargo add image image-atlas
 ```
-
-# License
-
-This library is licensed under the [MIT license](LICENSE).
