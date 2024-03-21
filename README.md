@@ -3,9 +3,7 @@
 [![crates.io](https://img.shields.io/crates/v/image-atlas)](https://crates.io/crates/image-atlas)
 [![doc.rs](https://img.shields.io/docsrs/image-atlas)](https://docs.rs/image-atlas)
 
-[**Documentation**](https://docs.rs/image-atlas)
-
-This library provides a general-purpose atlas texture generator with a focus on ease of use and simplicity.
+This library provides a general-purpose texture atlas generator with a focus on ease of use and simplicity.
 
 There are multiple generation methods and mip map options.
 
@@ -31,11 +29,6 @@ let atlas = create_atlas(&AtlasDescriptor {
 })
 .unwrap();
 
-println!("{:?}", atlas.texcoords[0]);
-```
-
-# Installation
-
-```shell
-cargo add image image-atlas
+let texcoord = &atlas.texcoords[0];
+let texture = &atlas.textures[texcoord.page as usize].mip_maps[0];
 ```
