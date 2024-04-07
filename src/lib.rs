@@ -34,6 +34,12 @@ use std::{collections::BTreeMap, error, fmt};
 
 /// A filter type using by mip map geration.
 ///
+/// - `Nearest`: Nearest neighbor filter.
+/// - `Linear`: Bilinear filter.
+/// - `Cubic`: Bicubic filter (Catmull-Rom).
+/// - `Gaussian`: Gaussian filter.
+/// - `Lanczos3`: Lanczos with window 3 filter.
+///
 /// See the [FilterType](image::imageops::FilterType) for details.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
@@ -60,13 +66,13 @@ impl From<AtlasMipFilter> for image::imageops::FilterType {
     }
 }
 
-/// A method using by texture atlas generation.
+/// A mip map method using by texture atlas generation.
 ///
-/// - `NoMip`: layout with no padding and no mip map.
-/// - `NoMipWithPadding`: layout with padding and no mip map.
-/// - `Mip`: layout with no padding and mip map.
-/// - `MipWithPadding`: layout with padding and mip map.
-/// - `MipWithBlock`: layout with smart padding and mip map.
+/// - `NoMip`: No mip map generation.
+/// - `NoMipWithPadding(padding size)`: No mip map generation with padding.
+/// - `Mip(filter, padding size)`: Mip map generation.
+/// - `MipWithPadding(filter, padding size)`: Mip map generation with padding.
+/// - `MipWithBlock(filter, block size)`: Mip map generation with block. block size must be power of two.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -79,11 +85,11 @@ pub enum AtlasMipOption {
     MipWithBlock(AtlasMipFilter, u32),
 }
 
-/// A texture wraping option using by mip map generation.
+/// A tiling method using by texture atlas generation.
 ///
 /// - `Clamp`: No tiling.
-/// - `Repeat`: With tiling.
-/// - `Mirror`: With mirror tiling.
+/// - `Repeat`: Repeat tiling.
+/// - `Mirror`: Mirror tiling.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -95,6 +101,9 @@ pub enum AtlasEntryMipOption {
 }
 
 /// A texture atlas generation entry description.
+///
+/// - `texture`: A input texture.
+/// - `mip`: A mip map tiling option.
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AtlasEntry<I: image::GenericImageView> {
@@ -103,6 +112,11 @@ pub struct AtlasEntry<I: image::GenericImageView> {
 }
 
 /// A texture atlas generation description.
+///
+/// - `max_page_count`: A maximum output texture count.
+/// - `size`: A texture width and height (same width and height).
+/// - `mip`: A mip map method option.
+/// - `entries`: A input texture entries.
 #[derive(Clone, PartialEq, Eq, Default, Debug)]
 pub struct AtlasDescriptor<'a, I: image::GenericImageView> {
     pub max_page_count: u32,
@@ -112,6 +126,17 @@ pub struct AtlasDescriptor<'a, I: image::GenericImageView> {
 }
 
 /// Creates a new texture atlas.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - `max_page_count` is zero.
+/// - `size` is not power of two.
+/// - `block_size` is not power of two.
+/// - `entries` is empty.
+/// - Packing error occurred.
+///
+/// See the [AtlasError](AtlasError) for details.
 ///
 /// # Examples
 ///
@@ -499,11 +524,11 @@ where
 
 /// A result of texture atlas generation.
 ///
-/// - `page_count`: A baked texture count.
-/// - `size`: A baked texture width and height (same width and height).
-/// - `mip_level_count`: A mip map count of baked texture.
-/// - `textures`: A vec of texture.
-/// - `textures`: A vec of texcoord.
+/// - `page_count`: A output texture count.
+/// - `size`: A output texture width and height (same width and height).
+/// - `mip_level_count`: A mip map count of output texture (1 is no mip map).
+/// - `textures`: A vec of output texture.
+/// - `texcoord`: A vec of texcoord in output texture (same order as `entries`).
 #[derive(Clone, Default)]
 pub struct Atlas<P: image::Pixel> {
     pub page_count: u32,
@@ -529,10 +554,10 @@ where
     }
 }
 
-/// A baked texture.
+/// A output texture entry of texture atlas.
 ///
-/// - `size`: A baked texture width and height (same width and height).
-/// - `mip_level_count`: A mip map count of baked texture.
+/// - `size`: A output texture width and height (same width and height).
+/// - `mip_level_count`: A mip map count of output texture (1 is no mip map).
 /// - `mip_maps`: A vec of mip map.
 #[derive(Clone, Default)]
 pub struct Texture<P: image::Pixel> {
@@ -572,6 +597,14 @@ where
 }
 
 /// An element coordinate representing `u32` position.
+///
+/// - `page`: A page index of texture.
+/// - `min_x`: A minimum x position.
+/// - `min_y`: A minimum y position.
+/// - `max_x`: A maximum x position.
+/// - `max_y`: A maximum y position.
+///
+/// `to_f32` and `to_f64` methods are provided for normalized texcoord.
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -611,6 +644,12 @@ impl Texcoord {
 }
 
 /// An element coordinate representing `f32` position.
+///
+/// - `page`: A page index of texture.
+/// - `min_x`: A minimum x position (normalized).
+/// - `min_y`: A minimum y position (normalized).
+/// - `max_x`: A maximum x position (normalized).
+/// - `max_y`: A maximum y position (normalized).
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -630,6 +669,12 @@ impl From<Texcoord> for Texcoord32 {
 }
 
 /// An element coordinate representing `f64` position.
+///
+/// - `page`: A page index of texture.
+/// - `min_x`: A minimum x position (normalized).
+/// - `min_y`: A minimum y position (normalized).
+/// - `max_x`: A maximum x position (normalized).
+/// - `max_y`: A maximum y position (normalized).
 #[repr(C)]
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -648,7 +693,15 @@ impl From<Texcoord> for Texcoord64 {
     }
 }
 
-/// An error of texture atlas generation.
+/// An error type for texture atlas generation.
+///
+/// - `ZeroMaxPageCount`: `max_page_count` is zero.
+/// - `InvalidSize(size)`: `size` is not power of two.
+/// - `InvalidBlockSize(block_size)`: `block_size` is not power of two.
+/// - `ZeroEntry`: `entries` is empty.
+/// - `Packing(err)`: Packing error occurred.
+///
+/// See the [RectanglePackError](rectangle_pack::RectanglePackError) for details.
 #[derive(Debug)]
 pub enum AtlasError {
     ZeroMaxPageCount,
