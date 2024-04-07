@@ -430,8 +430,8 @@ where
             page: location.z(),
             min_x: location.x() * block_size + padding,
             min_y: location.y() * block_size + padding,
-            max_x: (location.x() + location.width()) * block_size - padding,
-            max_y: (location.y() + location.height()) * block_size - padding,
+            max_x: location.x() * block_size + padding + entries[i].texture.width(),
+            max_y: location.y() * block_size + padding + entries[i].texture.height(),
             size,
         };
         texcoords[i] = texcoord;
