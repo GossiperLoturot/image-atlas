@@ -209,10 +209,9 @@ where
     }
 
     let mut target_bins = BTreeMap::new();
-    target_bins.insert(
-        (),
-        rectangle_pack::TargetBin::new(size, size, max_page_count),
-    );
+    for i in 0..max_page_count {
+        target_bins.insert(i, rectangle_pack::TargetBin::new(size, size, 1));
+    }
 
     let locations = rectangle_pack::pack_rects(
         &rects,
@@ -223,11 +222,11 @@ where
 
     let mut page_count = 0;
     let mut texcoords = vec![Texcoord::default(); entries.len()];
-    for (&i, (_, location)) in locations.packed_locations() {
-        page_count = u32::max(page_count, location.z() + 1);
+    for (&i, &(page, location)) in locations.packed_locations() {
+        page_count = u32::max(page_count, page + 1);
 
         let texcoord = Texcoord {
-            page: location.z(),
+            page,
             min_x: location.x() + padding,
             min_y: location.y() + padding,
             max_x: location.x() + location.width() - padding,
@@ -239,7 +238,7 @@ where
 
     let mip_level_count = 1;
     let mut textures = vec![Texture::new(size, mip_level_count); page_count as usize];
-    for (&i, (_, location)) in locations.packed_locations() {
+    for (&i, &(page, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
         let src = resample(
@@ -251,7 +250,7 @@ where
             location.height(),
         );
 
-        let target = &mut textures[location.z() as usize].mip_maps[0];
+        let target = &mut textures[page as usize].mip_maps[0];
         image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
     }
 
@@ -299,10 +298,9 @@ where
     }
 
     let mut target_bins = BTreeMap::new();
-    target_bins.insert(
-        (),
-        rectangle_pack::TargetBin::new(size, size, max_page_count),
-    );
+    for i in 0..max_page_count {
+        target_bins.insert(i, rectangle_pack::TargetBin::new(size, size, 1));
+    }
 
     let locations = rectangle_pack::pack_rects(
         &rects,
@@ -313,11 +311,11 @@ where
 
     let mut page_count = 0;
     let mut texcoords = vec![Texcoord::default(); entries.len()];
-    for (&i, (_, location)) in locations.packed_locations() {
-        page_count = u32::max(page_count, location.z() + 1);
+    for (&i, &(page, location)) in locations.packed_locations() {
+        page_count = u32::max(page_count, page + 1);
 
         let texcoord = Texcoord {
-            page: location.z(),
+            page,
             min_x: location.x() + padding,
             min_y: location.y() + padding,
             max_x: location.x() + location.width() - padding,
@@ -329,7 +327,7 @@ where
 
     let mip_level_count = size.ilog2() + 1;
     let mut textures = vec![Texture::new(size, mip_level_count); page_count as usize];
-    for (&i, (_, location)) in locations.packed_locations() {
+    for (&i, &(page, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
         let src = resample(
@@ -341,7 +339,7 @@ where
             location.height(),
         );
 
-        let target = &mut textures[location.z() as usize].mip_maps[0];
+        let target = &mut textures[page as usize].mip_maps[0];
         image::imageops::replace(target, &src, location.x() as i64, location.y() as i64);
     }
 
@@ -409,10 +407,9 @@ where
 
     let bin_size = size / block_size;
     let mut target_bins = BTreeMap::new();
-    target_bins.insert(
-        (),
-        rectangle_pack::TargetBin::new(bin_size, bin_size, max_page_count),
-    );
+    for i in 0..max_page_count {
+        target_bins.insert(i, rectangle_pack::TargetBin::new(bin_size, bin_size, 1));
+    }
 
     let locations = rectangle_pack::pack_rects(
         &rects,
@@ -423,11 +420,11 @@ where
 
     let mut page_count = 0;
     let mut texcoords = vec![Texcoord::default(); entries.len()];
-    for (&i, (_, location)) in locations.packed_locations() {
-        page_count = u32::max(page_count, location.z() + 1);
+    for (&i, &(page, location)) in locations.packed_locations() {
+        page_count = u32::max(page_count, page + 1);
 
         let texcoord = Texcoord {
-            page: location.z(),
+            page,
             min_x: location.x() * block_size + padding,
             min_y: location.y() * block_size + padding,
             max_x: location.x() * block_size + padding + entries[i].texture.width(),
@@ -439,7 +436,7 @@ where
 
     let mip_level_count = block_size.ilog2() + 1;
     let mut textures = vec![Texture::new(size, mip_level_count); page_count as usize];
-    for (&i, (_, location)) in locations.packed_locations() {
+    for (&i, &(page, location)) in locations.packed_locations() {
         let entry = &entries[i];
 
         let src = resample(
@@ -456,7 +453,7 @@ where
             let height = src.height() >> mip_level;
             let mip_map = image::imageops::resize(&src, width, height, filter.into());
 
-            let target = &mut textures[location.z() as usize].mip_maps[mip_level as usize];
+            let target = &mut textures[page as usize].mip_maps[mip_level as usize];
             let x = location.x() as i64 * (block_size >> mip_level) as i64;
             let y = location.y() as i64 * (block_size >> mip_level) as i64;
             image::imageops::replace(target, &mip_map, x, y);
